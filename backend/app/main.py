@@ -51,7 +51,7 @@ def create_app() -> FastAPI:
     async def _handle_domain_error(_request: Request, exc: DomainError) -> JSONResponse:
         return JSONResponse(
             status_code=exc.status_code,
-            content={"detail": exc.message, "code": exc.code},
+            content={"detail": exc.message, "code": exc.code, **exc.payload},
         )
 
     app.include_router(api_router, prefix=settings.api_prefix)

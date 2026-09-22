@@ -437,6 +437,92 @@ h4 {
   padding: 32px 0;
 }
 
+/* 表格多选列 */
+.data-table .check-cell {
+  width: 36px;
+  text-align: center;
+  padding-right: 0;
+}
+
+.data-table .check-cell input {
+  cursor: pointer;
+}
+
+/* 批量操作工具条 */
+.batch-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+  padding: 10px 14px;
+  margin-bottom: 2px;
+  border: 1px solid var(--primary);
+  border-radius: var(--radius);
+  background: var(--primary-soft);
+  font-size: 13px;
+}
+
+.batch-toolbar-count strong {
+  font-size: 15px;
+}
+
+.batch-toolbar-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+/* 责任人可检索下拉 */
+.assignee-select {
+  position: relative;
+}
+
+.assignee-dropdown {
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 0;
+  right: 0;
+  z-index: 80;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+  max-height: 240px;
+  overflow: auto;
+}
+
+.assignee-option {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  width: 100%;
+  padding: 8px 12px;
+  border: none;
+  background: none;
+  font-size: 13px;
+  color: var(--text);
+  cursor: pointer;
+  text-align: left;
+}
+
+.assignee-option:hover {
+  background: var(--primary-soft);
+}
+
+.assignee-count {
+  color: var(--muted);
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+.assignee-state {
+  padding: 10px 12px;
+  color: var(--muted);
+  font-size: 13px;
+}
+
 /* 分页 */
 .pagination {
   display: flex;

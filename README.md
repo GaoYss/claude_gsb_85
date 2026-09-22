@@ -16,6 +16,7 @@
 | 巡查记录 | 按“巡查主表 + 巡查项明细”录入，逐部位记录检查结果；存在异常项时自动判定结论为「发现异常」并引导登记隐患 |
 | 隐患登记 | 隐患标题、类别、等级、来源、发现日期、整改期限、责任人、整改方案，可关联来源巡查记录 |
 | 整改跟踪 | 整改状态机流转 + 整改流水（措施 / 进展 / 验收 / 销号），逾期自动标记 |
+| 批量操作 | 隐患列表跨页多选，批量指派责任人 / 批量催办；整批原子（任一不满足条件整批取消并逐条说明），按批次号幂等防重复提交，每次操作均写整改流水 |
 
 ## 目录结构
 
@@ -30,7 +31,7 @@
 │   │   ├── schemas/             # 出入参校验与序列化
 │   │   ├── services/            # 业务逻辑（含隐患状态机，可脱离 HTTP 单独测试）
 │   │   └── main.py              # 应用装配
-│   ├── tests/                   # pytest 接口测试（30 个用例）
+│   ├── tests/                   # pytest 接口测试（39 个用例）
 │   ├── Dockerfile
 │   └── requirements.txt
 ├── frontend/                    # Vue 3 单页应用
@@ -170,6 +171,9 @@ npm run dev                       # http://localhost:5173 ，/api 自动代理�
 | GET/PUT/DELETE | `/hazards/{id}` | 隐患详情（含整改流水）/ 更新 / 删除 |
 | POST | `/hazards/{id}/rectifications` | 追加整改跟踪记录 |
 | POST | `/hazards/{id}/transition` | 整改状态流转 |
+| GET | `/hazards/assignees` | 整改责任人候选（聚合历史责任人，支持检索） |
+| POST | `/hazards/batch-assign` | 批量指派整改责任人（整批原子 + batch_id 幂等） |
+| POST | `/hazards/batch-urge` | 批量催办（整批原子 + batch_id 幂等） |
 
 列表接口统一支持 `page` / `page_size`，返回 `{items, total, page, page_size, pages}`。
 

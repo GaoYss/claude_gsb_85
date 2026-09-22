@@ -24,9 +24,12 @@ watch(
   },
 )
 
-// 登记记录由系统自动生成，不由人工选择
+// 登记记录由系统自动生成；「指派责任人」必须真正修改责任人字段，
+// 走编辑或列表批量指派，不允许只写一条不落字段的指派记录
 const actionOptions = computed(() =>
-  dictionary.options('rectification_action').filter((item) => item.value !== 'register'),
+  dictionary
+    .options('rectification_action')
+    .filter((item) => !['register', 'assign'].includes(item.value)),
 )
 
 function submit() {

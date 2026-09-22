@@ -7,9 +7,17 @@ class DomainError(Exception):
     status_code = 400
     code = "domain_error"
 
-    def __init__(self, message: str, *, code: str | None = None) -> None:
+    def __init__(
+        self,
+        message: str,
+        *,
+        code: str | None = None,
+        payload: dict | None = None,
+    ) -> None:
         super().__init__(message)
         self.message = message
+        # 附加结构化明细（如批量操作的逐条失败原因），随响应一并下发
+        self.payload = payload or {}
         if code:
             self.code = code
 

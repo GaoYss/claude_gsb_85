@@ -33,6 +33,8 @@ function toAppError(error) {
     appError.status = error.response.status
     appError.message =
       extractMessage(error.response.data) || `请求失败（HTTP ${error.response.status}）`
+    // 保留原始响应体：批量操作失败时视图层需要读取 failures 逐条明细
+    appError.data = error.response.data
   } else if (error.request) {
     appError.status = 0
     appError.message = '无法连接后端服务，请确认 API 已启动'

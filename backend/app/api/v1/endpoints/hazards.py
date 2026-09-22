@@ -11,6 +11,10 @@ from app.models.enums import (
 )
 from app.schemas.common import Message, Page
 from app.schemas.hazard import (
+    AssigneeOption,
+    HazardBatchAssignRequest,
+    HazardBatchResult,
+    HazardBatchUrgeRequest,
     HazardCreate,
     HazardDetail,
     HazardRead,
@@ -62,6 +66,43 @@ def list_hazards(
 )
 def create_hazard(payload: HazardCreate, db: DbSession) -> HazardDetail:
     return hazard_service.create_hazard(db, payload)
+
+
+# 注意：/batch-assign、/batch-urge、/assignees 必须注册在 /{hazard_id} 之前，
+# 否则 "batch-assign" 会被当作 {hazard_id} 匹配并因 int 校验失败返回 422。
+
+
+@router.get(
+    "/assignees",
+    response_model=list[AssigneeOption],
+    summary="整改责任人候选（按名下未销号数量排序，支持检索）",
+)
+def list_assignees(
+    db: DbSession,
+    keyword: str | None = Query(default=None, description="按姓名模糊检索"),
+    limit: int = Query(default=50, ge=1, le=200, description="返回条数上限"),
+) -> list[AssigneeOption]:
+    return hazard_service.list_assignee_candidates(db, keyword=keyword, limit=limit)
+
+
+@router.post(
+    "/batch-assign",
+    response_model=HazardBatchResult,
+    summary="批量指派整改责任人（整批原子 + 幂等）",
+    responses={409: {"description": "存在不满足条件的隐患，整批未生效，failures 逐条说明"}},
+)
+def batch_assign(payload: HazardBatchAssignRequest, db: DbSession) -> HazardBatchResult:
+    return hazard_service.batch_assign(db, payload)
+
+
+@router.post(
+    "/batch-urge",
+    response_model=HazardBatchResult,
+    summary="批量催办（整批原子 + 幂等）",
+    responses={409: {"description": "存在不满足条件的隐患，整批未生效，failures 逐条说明"}},
+)
+def batch_urge(payload: HazardBatchUrgeRequest, db: DbSession) -> HazardBatchResult:
+    return hazard_service.batch_urge(db, payload)
 
 
 @router.get("/{hazard_id}", response_model=HazardDetail, summary="隐患详情（含整改流水）")

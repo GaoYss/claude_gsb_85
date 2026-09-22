@@ -51,4 +51,28 @@ def init_db() -> None:
     from app import models  # noqa: F401  确保所有模型已注册
 
     Base.metadata.create_all(bind=engine)
+    _ensure_columns()
+
+
+def _ensure_columns() -> None:
+    """给已存在的老库补新列（create_all 不会 alter 已有表）。
+
+    只处理「新增可空列」这一种安全场景；复杂变更仍需人工迁移。
+    """
+    from sqlalchemy import inspect, text
+
+    additions = {
+        "hazard_rectification": {
+            "batch_id": "VARCHAR(64)",
+        },
+    }
+    inspector = inspect(engine)
+    with engine.begin() as conn:
+        for table, columns in additions.items():
+            if table not in inspector.get_table_names():
+                continue
+            existing = {col["name"] for col in inspector.get_columns(table)}
+            for name, ddl in columns.items():
+                if name not in existing:
+                    conn.execute(text(f"ALTER TABLE {table} ADD COLUMN {name} {ddl}"))
 

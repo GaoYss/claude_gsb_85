@@ -18,6 +18,19 @@ export function trimOrNull(value) {
 }
 
 /**
+ * 生成批量操作幂等键。
+ * crypto.randomUUID 只在安全上下文（HTTPS / localhost）可用，
+ * 内网纯 HTTP 部署时回退到手写 UUID v4，保证幂等键总能生成。
+ */
+export function newBatchId() {
+  if (globalThis.crypto?.randomUUID) return crypto.randomUUID()
+  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (c) => {
+    const r = (Math.random() * 16) | 0
+    return (c === 'x' ? r : (r & 0x3) | 0x8).toString(16)
+  })
+}
+
+/**
  * 按字段类型清洗提交数据：numberFields 转数值、其余空串转 null、文本去空格。
  */
 export function cleanPayload(source, { numberFields = [], intFields = [], textFields = [] } = {}) {

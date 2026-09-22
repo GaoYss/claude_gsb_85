@@ -32,6 +32,8 @@ export const TAG_TONES = {
   },
   rectification_action: {
     register: 'muted',
+    assign: 'info',
+    urge: 'warn',
     measure: 'info',
     progress: 'accent',
     verify: 'warn',

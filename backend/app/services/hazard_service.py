@@ -3,7 +3,7 @@
 from dataclasses import dataclass
 from datetime import date
 
-from sqlalchemy import and_, func, or_, select
+from sqlalchemy import and_, case, func, or_, select
 from sqlalchemy.orm import Session, selectinload
 
 from app.core.errors import ConflictError, InvalidOperationError, NotFoundError
@@ -11,6 +11,11 @@ from app.db.base import now_local
 from app.models import Hazard, HazardRectification, Inspection
 from app.models.enums import HazardStatus, RectificationAction
 from app.schemas.hazard import (
+    AssigneeOption,
+    BatchFailureItem,
+    HazardBatchAssignRequest,
+    HazardBatchResult,
+    HazardBatchUrgeRequest,
     HazardCreate,
     HazardRectificationCreate,
     HazardTransitionOption,
@@ -264,6 +269,12 @@ def add_rectification(
     hazard = get_hazard(db, hazard_id)
     if hazard.status == HazardStatus.CLOSED.value:
         raise ConflictError("隐患已销号，不能再追加整改记录")
+    if payload.action in (RectificationAction.REGISTER, RectificationAction.ASSIGN):
+        # 登记记录由系统自动生成；指派必须真正修改责任人字段，走批量指派或编辑接口
+        raise InvalidOperationError(
+            f"「{RectificationAction.label_of(payload.action.value)}」记录不能手工追加，"
+            "请使用登记 / 批量指派 / 编辑接口"
+        )
 
     record = HazardRectification(
         action=payload.action.value,
@@ -301,3 +312,195 @@ def overdue_hazard_count(db: Session) -> int:
         )
     )
     return db.scalar(stmt) or 0
+
+
+# ---------- 批量操作：指派责任人 / 催办 ----------
+#
+# 两条铁律：
+# 1. 整批原子——批次里任一隐患不满足条件，整批不生效（单事务，校验失败即抛错回滚），
+#    并通过 failures 逐条说明原因，绝不出现"只改了一半"。
+# 2. 幂等——客户端为每批生成 batch_id，同一 batch_id 重复提交（双击 / 重试 / 刷新重发）
+#    直接返回首次处理结果，不会重复写整改流水。
+
+
+def _dedupe_ids(hazard_ids: list[int]) -> list[int]:
+    """去重保序：跨页勾选可能带回重复 id。"""
+    return list(dict.fromkeys(hazard_ids))
+
+
+def _find_batch_records(db: Session, batch_id: str) -> list[HazardRectification]:
+    stmt = select(HazardRectification).where(HazardRectification.batch_id == batch_id)
+    return list(db.scalars(stmt).all())
+
+
+def _load_batch_hazards(
+    db: Session, hazard_ids: list[int]
+) -> tuple[list[Hazard], list[BatchFailureItem]]:
+    """按 id 取隐患并保持传入顺序；已不存在的转成失败项。"""
+    ids = _dedupe_ids(hazard_ids)
+    rows = db.scalars(select(Hazard).where(Hazard.id.in_(ids))).all()
+    by_id = {hazard.id: hazard for hazard in rows}
+    hazards: list[Hazard] = []
+    failures: list[BatchFailureItem] = []
+    for hid in ids:
+        hazard = by_id.get(hid)
+        if hazard is None:
+            failures.append(
+                BatchFailureItem(
+                    hazard_id=hid, reason="隐患不存在或已被删除，请刷新列表后重新勾选"
+                )
+            )
+        else:
+            hazards.append(hazard)
+    return hazards, failures
+
+
+def _raise_batch_failure(action_label: str, failures: list[BatchFailureItem]) -> None:
+    """任一不满足条件即整批取消：错误说明 + failures 逐条原因一起返回。"""
+    preview = "；".join(f"「{item.code or item.hazard_id}」{item.reason}" for item in failures[:5])
+    more = f" 等 {len(failures)} 条" if len(failures) > 5 else ""
+    raise ConflictError(
+        f"批量{action_label}未生效：{len(failures)} 条不满足条件，整批已取消（{preview}{more}）",
+        payload={"failures": [item.model_dump() for item in failures]},
+    )
+
+
+def _batch_already_processed(
+    payload_batch_id: str, action: RectificationAction, requested: int, existing: list[HazardRectification]
+) -> HazardBatchResult:
+    """同一批次重复提交：返回首次处理结果，明确标记未重复写入。"""
+    return HazardBatchResult(
+        batch_id=payload_batch_id,
+        action=action,
+        requested=requested,
+        processed=len(existing),
+        already_processed=True,
+        processed_ids=sorted(record.hazard_id for record in existing),
+    )
+
+
+def batch_assign(db: Session, payload: HazardBatchAssignRequest) -> HazardBatchResult:
+    """批量指派整改责任人，逐条写「指派责任人」流水。"""
+    ids = _dedupe_ids(payload.hazard_ids)
+    existing = _find_batch_records(db, payload.batch_id)
+    if existing:
+        return _batch_already_processed(payload.batch_id, RectificationAction.ASSIGN, len(ids), existing)
+
+    assignee = payload.assignee.strip()
+    hazards, failures = _load_batch_hazards(db, ids)
+    for hazard in hazards:
+        if hazard.status == HazardStatus.CLOSED.value:
+            failures.append(
+                BatchFailureItem(
+                    hazard_id=hazard.id,
+                    code=hazard.code,
+                    title=hazard.title,
+                    reason="已销号，无需再指派整改责任人",
+                )
+            )
+        elif (hazard.assignee or "") == assignee:
+            failures.append(
+                BatchFailureItem(
+                    hazard_id=hazard.id,
+                    code=hazard.code,
+                    title=hazard.title,
+                    reason=f"整改责任人已是「{assignee}」，无需重复指派",
+                )
+            )
+    if failures:
+        _raise_batch_failure("指派", failures)
+
+    for hazard in hazards:
+        previous = hazard.assignee or "未指派"
+        hazard.assignee = assignee
+        hazard.rectifications.append(
+            HazardRectification(
+                action=RectificationAction.ASSIGN.value,
+                content=f"批量指派整改责任人：{previous} → {assignee}",
+                operator=payload.operator,
+                batch_id=payload.batch_id,
+            )
+        )
+    db.commit()
+    return HazardBatchResult(
+        batch_id=payload.batch_id,
+        action=RectificationAction.ASSIGN,
+        requested=len(ids),
+        processed=len(hazards),
+        processed_ids=[hazard.id for hazard in hazards],
+    )
+
+
+def batch_urge(db: Session, payload: HazardBatchUrgeRequest) -> HazardBatchResult:
+    """批量催办：只写「催办提醒」流水，不变更整改状态。"""
+    ids = _dedupe_ids(payload.hazard_ids)
+    existing = _find_batch_records(db, payload.batch_id)
+    if existing:
+        return _batch_already_processed(payload.batch_id, RectificationAction.URGE, len(ids), existing)
+
+    hazards, failures = _load_batch_hazards(db, ids)
+    for hazard in hazards:
+        if hazard.status == HazardStatus.CLOSED.value:
+            failures.append(
+                BatchFailureItem(
+                    hazard_id=hazard.id,
+                    code=hazard.code,
+                    title=hazard.title,
+                    reason="已销号，无需催办",
+                )
+            )
+        elif not hazard.assignee:
+            failures.append(
+                BatchFailureItem(
+                    hazard_id=hazard.id,
+                    code=hazard.code,
+                    title=hazard.title,
+                    reason="尚未指派整改责任人，请先批量指派",
+                )
+            )
+    if failures:
+        _raise_batch_failure("催办", failures)
+
+    note = (payload.content or "").strip()
+    for hazard in hazards:
+        content = note or f"请责任人「{hazard.assignee}」尽快落实整改并反馈进展"
+        hazard.rectifications.append(
+            HazardRectification(
+                action=RectificationAction.URGE.value,
+                content=content,
+                operator=payload.operator,
+                batch_id=payload.batch_id,
+            )
+        )
+    db.commit()
+    return HazardBatchResult(
+        batch_id=payload.batch_id,
+        action=RectificationAction.URGE,
+        requested=len(ids),
+        processed=len(hazards),
+        processed_ids=[hazard.id for hazard in hazards],
+    )
+
+
+def list_assignee_candidates(
+    db: Session, keyword: str | None = None, limit: int = 50
+) -> list[AssigneeOption]:
+    """整改责任人候选：从历史隐患聚合，按名下未销号数量排序，支持模糊检索。
+
+    候选人可能很多，统一走后端检索 + limit，前端不做全量加载。
+    """
+    open_count = func.sum(case((Hazard.status != HazardStatus.CLOSED.value, 1), else_=0))
+    conditions = [Hazard.assignee.is_not(None), Hazard.assignee != ""]
+    if keyword and keyword.strip():
+        conditions.append(Hazard.assignee.like(f"%{keyword.strip()}%"))
+    stmt = (
+        select(Hazard.assignee, open_count.label("open_count"))
+        .where(*conditions)
+        .group_by(Hazard.assignee)
+        .order_by(open_count.desc(), Hazard.assignee.asc())
+        .limit(limit)
+    )
+    return [
+        AssigneeOption(name=name, open_count=count or 0)
+        for name, count in db.execute(stmt).all()
+    ]

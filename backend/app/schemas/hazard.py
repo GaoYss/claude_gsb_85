@@ -118,3 +118,60 @@ class HazardDetail(HazardRead):
 
     rectifications: list[HazardRectificationRead] = Field(default_factory=list)
 
+
+# ---------- 批量操作（指派 / 催办） ----------
+
+# 单批上限：防止误操作把整库隐患一次改掉，也控制单事务大小
+BATCH_MAX_IDS = 200
+
+
+class HazardBatchAssignRequest(BaseModel):
+    """批量指派整改责任人。"""
+
+    hazard_ids: list[int] = Field(min_length=1, max_length=BATCH_MAX_IDS)
+    assignee: str = Field(min_length=1, max_length=64, description="整改责任人")
+    operator: str | None = Field(default=None, max_length=64, description="操作人")
+    batch_id: str = Field(
+        min_length=8,
+        max_length=64,
+        description="客户端生成的幂等键：同一批次重复提交不会产生重复记录",
+    )
+
+
+class HazardBatchUrgeRequest(BaseModel):
+    """批量催办。"""
+
+    hazard_ids: list[int] = Field(min_length=1, max_length=BATCH_MAX_IDS)
+    content: str | None = Field(default=None, max_length=200, description="催办说明，可空")
+    operator: str | None = Field(default=None, max_length=64, description="操作人")
+    batch_id: str = Field(min_length=8, max_length=64, description="幂等键，同批量指派")
+
+
+class BatchFailureItem(BaseModel):
+    """批量操作中单条不满足条件的明细。"""
+
+    hazard_id: int
+    code: str = ""
+    title: str = ""
+    reason: str
+
+
+class HazardBatchResult(BaseModel):
+    """批量操作结果。requested 与 processed 一致才说明勾选数量全部处理。"""
+
+    batch_id: str
+    action: RectificationAction
+    requested: int = Field(description="请求条数（去重后）")
+    processed: int = Field(description="实际处理条数")
+    already_processed: bool = Field(
+        default=False, description="该批次此前已成功处理，本次为重复提交，未重复写入"
+    )
+    processed_ids: list[int] = Field(default_factory=list)
+
+
+class AssigneeOption(BaseModel):
+    """整改责任人候选（从历史隐患中聚合）。"""
+
+    name: str
+    open_count: int = Field(description="该责任人名下未销号隐患数")
+

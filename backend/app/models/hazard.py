@@ -78,5 +78,8 @@ class HazardRectification(TimestampMixin, Base):
     recorded_at: Mapped[datetime] = mapped_column(
         DateTime, default=now_local, index=True, comment="记录时间"
     )
+    batch_id: Mapped[str | None] = mapped_column(
+        String(64), index=True, comment="批量操作幂等键：同一批次重复提交不会重复落记录"
+    )
 
     hazard: Mapped["Hazard"] = relationship(back_populates="rectifications")
