@@ -11,6 +11,9 @@ from app.models.enums import (
 )
 from app.schemas.common import Message, Page
 from app.schemas.hazard import (
+    HazardBatchAssignRequest,
+    HazardBatchRemindRequest,
+    HazardBatchResult,
     HazardCreate,
     HazardDetail,
     HazardRead,
@@ -62,6 +65,39 @@ def list_hazards(
 )
 def create_hazard(payload: HazardCreate, db: DbSession) -> HazardDetail:
     return hazard_service.create_hazard(db, payload)
+
+
+@router.get(
+    "/assignee-candidates",
+    response_model=list[str],
+    summary="整改责任人候选（聚合历史责任人 / 发现人 / 巡查人，支持检索）",
+)
+def list_assignee_candidates(
+    db: DbSession,
+    keyword: str | None = Query(default=None, description="按姓名模糊检索"),
+    limit: int = Query(default=20, ge=1, le=50, description="返回条数上限"),
+) -> list[str]:
+    return hazard_service.assignee_candidates(db, keyword=keyword, limit=limit)
+
+
+@router.post(
+    "/batch-assign",
+    response_model=HazardBatchResult,
+    summary="批量指派整改责任人（整批原子生效，重复提交幂等）",
+    responses={409: {"description": "批次中存在不满足条件的隐患，整批未生效"}},
+)
+def batch_assign(payload: HazardBatchAssignRequest, db: DbSession) -> HazardBatchResult:
+    return hazard_service.batch_assign(db, payload)
+
+
+@router.post(
+    "/batch-remind",
+    response_model=HazardBatchResult,
+    summary="批量催办（整批原子生效，重复提交幂等）",
+    responses={409: {"description": "批次中存在不满足条件的隐患，整批未生效"}},
+)
+def batch_remind(payload: HazardBatchRemindRequest, db: DbSession) -> HazardBatchResult:
+    return hazard_service.batch_remind(db, payload)
 
 
 @router.get("/{hazard_id}", response_model=HazardDetail, summary="隐患详情（含整改流水）")

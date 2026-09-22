@@ -28,3 +28,15 @@ export function transitionHazard(id, payload) {
   return http.post(`/hazards/${id}/transition`, payload)
 }
 
+export function fetchAssigneeCandidates(keyword = '') {
+  return http.get('/hazards/assignee-candidates', { params: compact({ keyword }) })
+}
+
+export function batchAssignHazards(payload) {
+  return http.post('/hazards/batch-assign', payload)
+}
+
+export function batchRemindHazards(payload) {
+  return http.post('/hazards/batch-remind', payload)
+}
+

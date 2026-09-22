@@ -232,6 +232,8 @@ class RectificationAction(LabeledEnum):
     """整改跟踪记录类型。"""
 
     REGISTER = "register"
+    ASSIGN = "assign"
+    REMIND = "remind"
     MEASURE = "measure"
     PROGRESS = "progress"
     VERIFY = "verify"
@@ -241,6 +243,8 @@ class RectificationAction(LabeledEnum):
     def labels(cls) -> dict[str, str]:
         return {
             cls.REGISTER.value: "登记发现",
+            cls.ASSIGN.value: "指派责任人",
+            cls.REMIND.value: "催办提醒",
             cls.MEASURE.value: "整改措施",
             cls.PROGRESS.value: "整改进展",
             cls.VERIFY.value: "验收意见",

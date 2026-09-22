@@ -24,9 +24,10 @@ watch(
   },
 )
 
-// 登记记录由系统自动生成，不由人工选择
+// 登记、指派、催办记录由系统自动生成（登记 / 批量操作），人工只能追加过程记录
+const MANUAL_ACTIONS = ['measure', 'progress', 'verify', 'close']
 const actionOptions = computed(() =>
-  dictionary.options('rectification_action').filter((item) => item.value !== 'register'),
+  dictionary.options('rectification_action').filter((item) => MANUAL_ACTIONS.includes(item.value)),
 )
 
 function submit() {

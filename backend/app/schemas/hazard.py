@@ -118,3 +118,41 @@ class HazardDetail(HazardRead):
 
     rectifications: list[HazardRectificationRead] = Field(default_factory=list)
 
+
+# 单次批量操作允许的最大条数（跨页勾选可能超过单页上限 100）
+BATCH_MAX_ITEMS = 200
+
+
+class HazardBatchRequest(BaseModel):
+    """批量操作公共入参：hazard_ids 来自跨页勾选，request_id 是幂等键。"""
+
+    hazard_ids: list[int] = Field(min_length=1, max_length=BATCH_MAX_ITEMS, description="隐患 id 列表")
+    operator: str | None = Field(default=None, max_length=64, description="操作人，写入整改流水")
+    note: str | None = Field(default=None, max_length=500, description="补充说明，写入整改流水")
+    request_id: str = Field(
+        min_length=8,
+        max_length=64,
+        description="客户端为每次批量操作生成的唯一键，重复提交不会产生重复记录",
+    )
+
+
+class HazardBatchAssignRequest(HazardBatchRequest):
+    assignee: str = Field(min_length=1, max_length=64, description="整改责任人")
+
+
+class HazardBatchRemindRequest(HazardBatchRequest):
+    pass
+
+
+class HazardBatchResult(BaseModel):
+    """批量操作结果。processed_count 与 hazard_ids 供前端核对勾选数量。"""
+
+    request_id: str
+    action: str = Field(description="批量操作类型：assign / remind")
+    processed_count: int
+    hazard_ids: list[int]
+    already_processed: bool = Field(
+        default=False, description="是否为重复提交的幂等重放（未产生新记录）"
+    )
+    message: str
+

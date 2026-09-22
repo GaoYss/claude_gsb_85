@@ -1,7 +1,7 @@
 <script setup>
 import { onMounted, ref } from 'vue'
+import { storeToRefs } from 'pinia'
 
-import { fetchSummary } from '@/api/overview'
 import BaseCard from '@/components/common/BaseCard.vue'
 import DataTable from '@/components/common/DataTable.vue'
 import DistributionList from '@/components/common/DistributionList.vue'
@@ -9,14 +9,16 @@ import EmptyState from '@/components/common/EmptyState.vue'
 import StatCard from '@/components/common/StatCard.vue'
 import StatusTag from '@/components/common/StatusTag.vue'
 import { useDictionaryStore } from '@/stores/dictionary'
+import { useOverviewStore } from '@/stores/overview'
 import { useToastStore } from '@/stores/toast'
 import { deadlineHint, formatDateTime } from '@/utils/format'
 
 const dictionary = useDictionaryStore()
 const toast = useToastStore()
-
-const summary = ref(null)
-const loading = ref(true)
+const overview = useOverviewStore()
+const { summary, loading } = storeToRefs(overview)
+// 已有缓存（从其他页返回）时首帧直接展示，不闪「加载中」
+const ready = ref(!!overview.summary)
 
 const inspectionColumns = [
   { key: 'code', label: '巡查编号', width: '150px' },
@@ -37,17 +39,17 @@ const hazardColumns = [
 
 onMounted(async () => {
   try {
-    summary.value = await fetchSummary()
+    await overview.ensureLoaded()
   } catch (error) {
     toast.error(error.message)
   } finally {
-    loading.value = false
+    ready.value = true
   }
 })
 </script>
 
 <template>
-  <div v-if="loading" class="muted">加载中…</div>
+  <div v-if="!ready || (loading && !summary)" class="muted">加载中…</div>
   <div v-else-if="!summary" class="muted">暂无统计数据</div>
   <div v-else>
     <div class="stat-grid">

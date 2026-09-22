@@ -80,3 +80,22 @@ class HazardRectification(TimestampMixin, Base):
     )
 
     hazard: Mapped["Hazard"] = relationship(back_populates="rectifications")
+
+
+class HazardBatchOperation(TimestampMixin, Base):
+    """隐患批量操作批次（批量指派 / 批量催办）。
+
+    既是一次批量操作的审计留痕，也是幂等键的载体：客户端为每次批量操作生成
+    唯一的 request_id，重复提交时直接重放首次结果，不会产生重复流水。
+    """
+
+    __tablename__ = "hazard_batch_operation"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    request_id: Mapped[str] = mapped_column(
+        String(64), unique=True, index=True, comment="客户端生成的幂等键"
+    )
+    action: Mapped[str] = mapped_column(String(24), comment="批量操作类型：assign / remind")
+    operator: Mapped[str | None] = mapped_column(String(64), comment="操作人")
+    processed_count: Mapped[int] = mapped_column(Integer, comment="实际处理条数")
+    detail: Mapped[str] = mapped_column(Text, comment="批次快照（JSON）：隐患清单与处理结果")
